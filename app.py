@@ -1,49 +1,60 @@
-import streamlit as st
 import os
-from dotenv import load_dotenv
-from resume_generator import generate_resume_text, create_resume_pdf
+import gradio as gr
+from google import genai
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+from resume_generator import generate_resume
 from cover_letter_generator import generate_cover_letter
 from portfolio_generator import generate_portfolio
 
-load_dotenv()
-import openai
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# ---------------- LOAD API KEY ---------------- #
 
-st.set_page_config(page_title="AI Resume & Portfolio Builder", layout="wide")
+API_KEY = os.environ.get("GOOGLE_API_KEY")
+if not API_KEY:
+    raise RuntimeError("GOOGLE_API_KEY not set")
 
-st.title("AI Resume & Portfolio Builder")
+client = genai.Client(api_key=API_KEY)
 
-with st.form("student_form"):
-    name = st.text_input("Full Name")
-    summary = st.text_area("Professional Summary")
-    skills = st.text_area("Skills (comma-separated)")
-    projects = st.text_area("Projects (Title: Description)")
-    job_role = st.text_input("Target Job Role")
-    company = st.text_input("Target Company")
+# IMPORTANT: Use fully qualified model name
+MODEL = "models/gemini-1.5-flash-latest"
 
-    submitted = st.form_submit_button("Generate")
+# ---------------- ATS SCORING ---------------- #
 
-if submitted:
-    student_data = {
-        "name": name,
-        "summary": summary,
-        "skills": skills.split(","),
-        "projects": [
-            {"title": p.split(":")[0], "description": p.split(":")[1], "tech": "Various"}
-            for p in projects.split("\n") if ":" in p
-        ]
-    }
+def ats_score(resume_text, job_description):
+    try:
+        vectorizer = TfidfVectorizer(stop_words="english")
+        vectors = vectorizer.fit_transform([resume_text, job_description])
+        score = (vectors[0] @ vectors[1].T).toarray()[0][0]
+        return f"{round(score * 100, 2)}%"
+    except Exception as e:
+        return f"ATS Error: {e}"
 
-    st.subheader("📄 Resume")
-    resume_text = generate_resume_text(student_data)
-    st.text(resume_text)
-    create_resume_pdf(resume_text)
-    st.download_button("Download Resume PDF", open("resume.pdf", "rb"), "resume.pdf")
+# ---------------- MAIN APP ---------------- #
 
-    st.subheader("✉️ Cover Letter")
-    cover_letter = generate_cover_letter(student_data, job_role, company)
-    st.text(cover_letter)
+def run_app(student_data, job_description):
+    resume = generate_resume(student_data, client, MODEL)
+    cover_letter = generate_cover_letter(student_data, job_description, client, MODEL)
+    portfolio = generate_portfolio(student_data)
+    ats = ats_score(resume, job_description)
 
-    st.subheader("🌐 Portfolio")
-    portfolio_html = generate_portfolio(student_data)
-    st.components.v1.html(portfolio_html, height=600)
+    return resume, cover_letter, ats, portfolio
+
+# ---------------- UI ---------------- #
+
+interface = gr.Interface(
+    fn=run_app,
+    inputs=[
+        gr.Textbox(lines=12, label="Student Details"),
+        gr.Textbox(lines=12, label="Job Description")
+    ],
+    outputs=[
+        gr.Textbox(lines=20, label="Generated ATS-Friendly Resume"),
+        gr.Textbox(lines=15, label="Generated Cover Letter"),
+        gr.Textbox(label="ATS Match Score"),
+        gr.HTML(label="Portfolio Preview")
+    ],
+    title="AI Resume & Portfolio Builder (Google Gemini)",
+    description="Generates resumes, cover letters, portfolios, and ATS scores using Google Gemini."
+)
+
+interface.launch()
