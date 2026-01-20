@@ -1,6 +1,4 @@
-streamlit
-openai
-python-dotenv
-fpdf
-jinja2
+google-genai
+gradio
+scikit-learn
 markdown
