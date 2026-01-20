@@ -1,32 +1,78 @@
-import openai
-from fpdf import FPDF
-from jinja2 import Template
+%%writefile app.py
+import os
+import gradio as gr
+from google import genai
+from sklearn.feature_extraction.text import TfidfVectorizer
 
-def generate_resume_text(student_data):
+# ---------------- CONFIG ---------------- #
+
+API_KEY = os.environ.get("GOOGLE_API_KEY")
+if not API_KEY:
+    raise RuntimeError("GOOGLE_API_KEY not set")
+
+client = genai.Client(api_key=API_KEY)
+
+MODEL = "gemini-1.5-flash"   # WORKING MODEL
+
+# ---------------- CORE FUNCTIONS ---------------- #
+
+def generate_resume(student_data):
+    if not student_data.strip():
+        return "Error: Student data is empty."
+
     prompt = f"""
-    Create an ATS-friendly professional resume using the following data.
-    Emphasize skills, projects, internships, and achievements.
+You are a professional resume writer.
 
-    Student Data:
-    {student_data}
-    """
+Generate an ATS-friendly resume.
+Use clear headings and bullet points.
+Avoid tables, emojis, and graphics.
 
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3
-    )
+Student Data:
+{student_data}
+"""
+    try:
+        response = client.models.generate_content(
+            model=MODEL,
+            contents=prompt
+        )
+        return response.text
+    except Exception as e:
+        return f"Resume Generation Error: {str(e)}"
 
-    return response.choices[0].message.content
+
+def ats_score(resume_text, job_description):
+    if not resume_text.strip() or not job_description.strip():
+        return "ATS Score Error: Missing input."
+
+    try:
+        vectorizer = TfidfVectorizer(stop_words="english")
+        vectors = vectorizer.fit_transform([resume_text, job_description])
+
+        similarity = (vectors[0] @ vectors[1].T).toarray()[0][0]
+        return f"{round(similarity * 100, 2)}%"
+    except Exception as e:
+        return f"ATS Scoring Error: {str(e)}"
 
 
-def create_resume_pdf(resume_text, output_file="resume.pdf"):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.set_font("Arial", size=11)
+def run_app(student_data, job_description):
+    resume = generate_resume(student_data)
+    score = ats_score(resume, job_description)
+    return resume, score
 
-    for line in resume_text.split("\n"):
-        pdf.multi_cell(0, 8, line)
+# ---------------- UI ---------------- #
 
-    pdf.output(output_file)
+interface = gr.Interface(
+    fn=run_app,
+    inputs=[
+        gr.Textbox(lines=12, label="Student Details"),
+        gr.Textbox(lines=12, label="Job Description")
+    ],
+    outputs=[
+        gr.Textbox(lines=20, label="Generated ATS-Friendly Resume"),
+        gr.Textbox(label="ATS Match Score")
+    ],
+    title="AI Resume & Portfolio Builder (Google Gemini)",
+    description="ATS-optimized resume generation using Google Gemini"
+)
+
+interface.launch(share=Ture)
