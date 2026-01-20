@@ -1,23 +1,18 @@
 import markdown
 
-def generate_portfolio(student_data):
-    portfolio_md = f"""
-# {student_data['name']} – Portfolio
+def generate_portfolio(student_data: str) -> str:
+    md_content = f"""
+# Portfolio
 
 ## About Me
-{student_data['summary']}
+{student_data}
 
-## Skills
-{", ".join(student_data['skills'])}
+## Skills & Projects
+(Generated dynamically from provided information)
 
-## Projects
-"""
-    for project in student_data["projects"]:
-        portfolio_md += f"""
-### {project['title']}
-{project['description']}
-Technologies: {project['tech']}
+## Contact
+Email and LinkedIn details can be added here.
 """
 
-    html = markdown.markdown(portfolio_md)
+    html = markdown.markdown(md_content)
     return html
