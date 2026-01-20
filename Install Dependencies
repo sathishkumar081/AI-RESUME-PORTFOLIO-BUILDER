@@ -1,7 +1,2 @@
-#to create a resume from raw data
 
-pip install streamlit openai python-dotenv fpdf jinja2 markdown
-# to check ats score
-
-pip install spacy scikit-learn nltk
-python -m spacy download en_core_web_sm
+!pip install -q google-genai gradio scikit-learn
